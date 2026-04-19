@@ -1,0 +1,995 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Music Trend Visualizer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.8.5/d3.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=DM+Sans:ital,wght@0,300;0,400;0,500;0,600;1,300&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #1DB954;
+    --green-dim: rgba(29,185,84,0.15);
+    --green-border: rgba(29,185,84,0.25);
+    --bg: #080810;
+    --bg2: #0d0d1a;
+    --bg3: #111120;
+    --text: #c8c8d8;
+    --text-muted: #6b6b88;
+    --border: rgba(255,255,255,0.07);
+    --font-mono: 'Space Mono', monospace;
+    --font-sans: 'DM Sans', sans-serif;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-sans);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── Background grid ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(29,185,84,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(29,185,84,0.04) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ── Nav ── */
+  nav {
+    position: sticky; top: 0; z-index: 100;
+    background: rgba(8,8,16,0.88);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 60px;
+    display: flex; align-items: center; justify-content: space-between;
+  }
+
+  .nav-brand {
+    font-family: var(--font-mono);
+    font-size: 1rem;
+    color: var(--green);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    display: flex; align-items: center; gap: 8px;
+  }
+
+  .nav-dot { width: 8px; height: 8px; background: var(--green); border-radius: 50%; animation: pulse 2s infinite; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.5; transform: scale(0.8); }
+  }
+
+  .nav-links { display: flex; gap: 2rem; list-style: none; }
+  .nav-links a { color: var(--text-muted); text-decoration: none; font-size: 0.875rem; font-weight: 400; transition: color 0.2s; }
+  .nav-links a:hover { color: var(--text); }
+
+  /* ── Main layout ── */
+  main { position: relative; z-index: 1; max-width: 1280px; margin: 0 auto; padding: 0 2rem 4rem; }
+
+  /* ── Hero ── */
+  .hero {
+    padding: 5rem 0 3rem;
+    display: grid; grid-template-columns: 1fr auto; align-items: end; gap: 2rem;
+  }
+
+  .hero-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.75rem;
+    letter-spacing: 0.15em;
+    color: var(--green);
+    text-transform: uppercase;
+    margin-bottom: 1rem;
+    display: flex; align-items: center; gap: 10px;
+  }
+
+  .hero-eyebrow::before {
+    content: ''; display: block; width: 30px; height: 1px; background: var(--green);
+  }
+
+  h1 {
+    font-family: var(--font-mono);
+    font-size: clamp(2.2rem, 5vw, 3.8rem);
+    font-weight: 700;
+    line-height: 1.05;
+    letter-spacing: -1px;
+    color: #fff;
+  }
+
+  h1 span { color: var(--green); }
+
+  .hero-desc {
+    margin-top: 1.2rem;
+    font-size: 1.05rem;
+    font-weight: 300;
+    color: var(--text-muted);
+    max-width: 520px;
+    line-height: 1.65;
+  }
+
+  .hero-stats {
+    display: flex; gap: 1rem; margin-top: 2.5rem; flex-wrap: wrap;
+  }
+
+  .stat-pill {
+    background: var(--green-dim);
+    border: 1px solid var(--green-border);
+    border-radius: 50px;
+    padding: 0.45rem 1.1rem;
+    font-family: var(--font-mono);
+    font-size: 0.8rem;
+    color: var(--green);
+  }
+
+  .refresh-btn {
+    background: var(--green);
+    color: #000;
+    border: none;
+    border-radius: 50px;
+    padding: 0.7rem 1.8rem;
+    font-family: var(--font-sans);
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s;
+    white-space: nowrap;
+  }
+
+  .refresh-btn:hover {
+    background: #1ed760;
+    transform: translateY(-1px);
+    box-shadow: 0 8px 24px rgba(29,185,84,0.35);
+  }
+
+  /* ── KPI row ── */
+  .kpi-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .kpi {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 1.4rem 1.5rem;
+    position: relative;
+    overflow: hidden;
+    transition: border-color 0.2s;
+  }
+
+  .kpi:hover { border-color: var(--green-border); }
+
+  .kpi::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--green), transparent);
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+
+  .kpi:hover::after { opacity: 1; }
+
+  .kpi-label {
+    font-size: 0.72rem;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 0.6rem;
+  }
+
+  .kpi-value {
+    font-family: var(--font-mono);
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--green);
+    line-height: 1;
+  }
+
+  .kpi-sub {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    margin-top: 0.35rem;
+  }
+
+  /* ── Section header ── */
+  .section-hdr {
+    display: flex; align-items: center; gap: 12px;
+    margin-bottom: 1.25rem;
+  }
+
+  .section-hdr h2 {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--green);
+  }
+
+  .section-hdr::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  /* ── Chart cards ── */
+  .chart-grid-2 {
+    display: grid;
+    grid-template-columns: 3fr 2fr;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-grid-equal {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-card {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1.75rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .chart-card-full {
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 1.75rem;
+    margin-bottom: 1.25rem;
+  }
+
+  .chart-title {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin-bottom: 1.5rem;
+  }
+
+  canvas { max-height: 320px; }
+
+  /* ── Treemap ── */
+  #treemap svg { border-radius: 12px; }
+
+  .treemap-cell { cursor: pointer; transition: opacity 0.15s; }
+  .treemap-cell:hover { opacity: 0.85; }
+  .treemap-label { font-family: var(--font-sans); pointer-events: none; }
+
+  /* ── Top tracks list ── */
+  .tracks-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.6rem;
+  }
+
+  .track-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0.75rem 1rem;
+    background: var(--bg3);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    transition: border-color 0.15s;
+  }
+
+  .track-item:hover { border-color: var(--green-border); }
+
+  .track-rank {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    min-width: 24px;
+    text-align: right;
+  }
+
+  .track-art {
+    width: 38px; height: 38px;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  .track-info { flex: 1; min-width: 0; }
+
+  .track-name {
+    font-size: 0.88rem;
+    font-weight: 500;
+    color: #e0e0f0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .track-artist {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: 1px;
+  }
+
+  .track-pop {
+    font-family: var(--font-mono);
+    font-size: 0.78rem;
+    color: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* ── Filter bar ── */
+  .filter-bar {
+    display: flex; gap: 0.6rem; flex-wrap: wrap;
+    margin-bottom: 2rem;
+  }
+
+  .filter-btn {
+    background: transparent;
+    border: 1px solid var(--border);
+    border-radius: 50px;
+    padding: 0.4rem 1rem;
+    color: var(--text-muted);
+    font-family: var(--font-sans);
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .filter-btn:hover, .filter-btn.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--green-dim);
+  }
+
+  /* ── Footer ── */
+  footer {
+    margin-top: 4rem;
+    padding: 2rem 0;
+    border-top: 1px solid var(--border);
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+
+  footer a { color: var(--green); text-decoration: none; }
+
+  /* ── Animations ── */
+  .fade-in { animation: fadeIn 0.6s ease forwards; opacity: 0; }
+  @keyframes fadeIn { to { opacity: 1; } }
+
+  .chart-card, .chart-card-full, .kpi {
+    animation: slideUp 0.5s ease forwards;
+    opacity: 0;
+  }
+
+  @keyframes slideUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .kpi:nth-child(1) { animation-delay: 0.05s; }
+  .kpi:nth-child(2) { animation-delay: 0.10s; }
+  .kpi:nth-child(3) { animation-delay: 0.15s; }
+  .kpi:nth-child(4) { animation-delay: 0.20s; }
+
+  @media (max-width: 900px) {
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    .chart-grid-2, .chart-grid-equal { grid-template-columns: 1fr; }
+    .hero { grid-template-columns: 1fr; }
+    .tracks-grid { grid-template-columns: 1fr; }
+  }
+
+  @media (max-width: 600px) {
+    .nav-links { display: none; }
+    .kpi-row { grid-template-columns: 1fr 1fr; }
+    h1 { font-size: 2rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-brand">
+    <span class="nav-dot"></span>
+    Symphony
+  </div>
+  <ul class="nav-links">
+    <li><a href="#genres">Genres</a></li>
+    <li><a href="#audio">Audio Features</a></li>
+    <li><a href="#trends">Trends</a></li>
+    <li><a href="#tracks">Top Tracks</a></li>
+  </ul>
+</nav>
+
+<main>
+  <!-- Hero -->
+  <section class="hero fade-in">
+    <div>
+      <div class="hero-eyebrow">Data Visualization Project · Spotify API</div>
+      <h1><span>Symphony</span></h1>
+      <p class="hero-desc">Discover what genres dominate streaming charts and which audio features drive popularity — powered by real Spotify data.</p>
+      <div class="hero-stats">
+        <span class="stat-pill" id="stat-tracks">50 tracks</span>
+        <span class="stat-pill" id="stat-genres">10 genres</span>
+        <span class="stat-pill">Live data</span>
+        <span class="stat-pill">6 chart types</span>
+      </div>
+    </div>
+    <button class="refresh-btn" onclick="refreshData()">↻ Refresh Data</button>
+  </section>
+
+  <!-- KPI -->
+  <div class="kpi-row" id="kpis">
+    <div class="kpi">
+      <div class="kpi-label">Tracks Analysed</div>
+      <div class="kpi-value" id="kpi-tracks">50</div>
+      <div class="kpi-sub">Current dataset</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Top Genre</div>
+      <div class="kpi-value" style="font-size:1.3rem;" id="kpi-top-genre">Pop</div>
+      <div class="kpi-sub" id="kpi-top-pop">Avg popularity: —</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Avg Popularity</div>
+      <div class="kpi-value" id="kpi-avg-pop">—</div>
+      <div class="kpi-sub">Out of 100</div>
+    </div>
+    <div class="kpi">
+      <div class="kpi-label">Genres Found</div>
+      <div class="kpi-value" id="kpi-genres">10</div>
+      <div class="kpi-sub">Distinct genres</div>
+    </div>
+  </div>
+
+  <!-- Genre charts -->
+  <section id="genres">
+    <div class="section-hdr"><h2>Genre Analysis</h2></div>
+    <div class="chart-grid-2">
+      <div class="chart-card">
+        <div class="chart-title">Top genres by popularity</div>
+        <canvas id="barChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Genre share among trending tracks</div>
+        <canvas id="pieChart"></canvas>
+      </div>
+    </div>
+
+    <!-- Treemap -->
+    <div class="chart-card-full">
+      <div class="chart-title">Genre treemap — size = track count</div>
+      <div id="treemap"></div>
+    </div>
+  </section>
+
+  <!-- Audio Features -->
+  <section id="audio" style="margin-top: 2rem;">
+    <div class="section-hdr"><h2>Audio Features</h2></div>
+    <div class="chart-grid-equal">
+      <div class="chart-card">
+        <div class="chart-title">Tempo distribution (BPM)</div>
+        <canvas id="histChart"></canvas>
+      </div>
+      <div class="chart-card">
+        <div class="chart-title">Energy vs Danceability</div>
+        <canvas id="scatterChart"></canvas>
+      </div>
+    </div>
+    <div class="chart-card-full">
+      <div class="chart-title">Audio feature radar by genre</div>
+      <canvas id="radarChart" style="max-height:420px; max-width: 600px; margin: 0 auto; display:block;"></canvas>
+    </div>
+  </section>
+
+  <!-- Trend over time -->
+  <section id="trends" style="margin-top: 2rem;">
+    <div class="section-hdr"><h2>Trend Over Time</h2></div>
+    <div class="chart-card-full">
+      <div class="chart-title">Genre popularity across time periods</div>
+      <canvas id="lineChart"></canvas>
+    </div>
+  </section>
+
+  <!-- Top Tracks -->
+  <section id="tracks" style="margin-top: 2rem;">
+    <div class="section-hdr"><h2>Top Tracks</h2></div>
+
+    <div class="filter-bar" id="genre-filters"></div>
+
+    <div class="chart-card-full">
+      <div class="tracks-grid" id="tracks-list"></div>
+    </div>
+  </section>
+</main>
+
+<footer>
+  Built with Python · Streamlit · Plotly · Spotipy &nbsp;|&nbsp;
+  <a href="https://developer.spotify.com/documentation/web-api" target="_blank">Spotify API</a> &nbsp;|&nbsp;
+  Symphony — Data Visualization Project
+</footer>
+
+<script>
+// ── Data generation ──────────────────────────────────────────────────────────
+const GENRES = ["Pop","Hip-Hop","R&B","Electronic","Rock","Latin","K-Pop","Indie","Country","Jazz"];
+const GENRE_COLORS = {
+  "Pop":"#1DB954","Hip-Hop":"#FF6B6B","R&B":"#A855F7","Electronic":"#06B6D4",
+  "Rock":"#F59E0B","Latin":"#EC4899","K-Pop":"#8B5CF6","Indie":"#6EE7B7",
+  "Country":"#FCD34D","Jazz":"#93C5FD"
+};
+const GENRE_WEIGHTS = [0.22,0.18,0.12,0.10,0.09,0.09,0.07,0.06,0.05,0.02];
+const ARTISTS = {
+  "Pop":["Taylor Swift","Olivia Rodrigo","Dua Lipa","Harry Styles","Sabrina Carpenter"],
+  "Hip-Hop":["Drake","Travis Scott","Kendrick Lamar","21 Savage","Future"],
+  "R&B":["The Weeknd","SZA","Beyoncé","Frank Ocean","H.E.R."],
+  "Electronic":["Calvin Harris","Disclosure","Flume","Fred Again","Four Tet"],
+  "Rock":["Imagine Dragons","Arctic Monkeys","Foo Fighters","The 1975","Tame Impala"],
+  "Latin":["Bad Bunny","J Balvin","Rosalía","Karol G","Shakira"],
+  "K-Pop":["BTS","BLACKPINK","Stray Kids","aespa","NewJeans"],
+  "Indie":["Phoebe Bridgers","Mitski","Boygenius","Sufjan Stevens","Snail Mail"],
+  "Country":["Morgan Wallen","Luke Combs","Zach Bryan","Kacey Musgraves","Chris Stapleton"],
+  "Jazz":["Norah Jones","Esperanza Spalding","Kamasi Washington","Diana Krall","Chet Baker"]
+};
+const TRACK_ADJ = ["Golden","Midnight","Neon","Faded","Electric","Lost","Wildfire","Echo","Phantom","Crystal","Broken","Velvet","Hollow","Burning","Rising"];
+const TRACK_NOUN= ["Dream","Waves","Fire","Heart","Sky","Rain","Light","Storm","Soul","Dance","Night","Road","Fade","Glow","Rush"];
+const GENRE_EMOJI = {"Pop":"🎤","Hip-Hop":"🎧","R&B":"🎶","Electronic":"⚡","Rock":"🎸","Latin":"💃","K-Pop":"✨","Indie":"🌿","Country":"🤠","Jazz":"🎷"};
+
+const AUDIO_PROFILES = {
+  "Pop":        {tempo:[110,128],energy:[0.65,0.85],dance:[0.70,0.90],valence:[0.55,0.80],acousticness:[0.05,0.25]},
+  "Hip-Hop":    {tempo:[80,100], energy:[0.60,0.80],dance:[0.75,0.92],valence:[0.35,0.65],acousticness:[0.05,0.20]},
+  "R&B":        {tempo:[75,100], energy:[0.45,0.70],dance:[0.65,0.85],valence:[0.40,0.70],acousticness:[0.10,0.35]},
+  "Electronic": {tempo:[120,145],energy:[0.75,0.95],dance:[0.72,0.92],valence:[0.45,0.75],acousticness:[0.02,0.12]},
+  "Rock":       {tempo:[115,145],energy:[0.70,0.92],dance:[0.45,0.68],valence:[0.40,0.65],acousticness:[0.05,0.25]},
+  "Latin":      {tempo:[95,130], energy:[0.68,0.88],dance:[0.80,0.96],valence:[0.65,0.90],acousticness:[0.10,0.30]},
+  "K-Pop":      {tempo:[100,130],energy:[0.65,0.88],dance:[0.72,0.90],valence:[0.50,0.80],acousticness:[0.04,0.20]},
+  "Indie":      {tempo:[88,118], energy:[0.40,0.68],dance:[0.45,0.68],valence:[0.35,0.65],acousticness:[0.20,0.55]},
+  "Country":    {tempo:[88,120], energy:[0.45,0.72],dance:[0.55,0.75],valence:[0.50,0.78],acousticness:[0.25,0.60]},
+  "Jazz":       {tempo:[70,110], energy:[0.30,0.60],dance:[0.40,0.65],valence:[0.45,0.70],acousticness:[0.40,0.80]},
+};
+
+function rand(min, max) { return min + Math.random() * (max - min); }
+function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+function weightedPick(items, weights) {
+  const total = weights.reduce((a, b) => a + b, 0);
+  let r = Math.random() * total;
+  for (let i = 0; i < items.length; i++) {
+    r -= weights[i];
+    if (r <= 0) return items[i];
+  }
+  return items[items.length - 1];
+}
+
+function generateData(n = 50) {
+  const tracks = [];
+  for (let i = 0; i < n; i++) {
+    const genre = weightedPick(GENRES, GENRE_WEIGHTS);
+    const p = AUDIO_PROFILES[genre];
+    tracks.push({
+      rank: i + 1,
+      name: `${pick(TRACK_ADJ)} ${pick(TRACK_NOUN)}`,
+      artist: pick(ARTISTS[genre]),
+      genre,
+      popularity: Math.round(rand(55, 99)),
+      tempo: rand(...p.tempo),
+      energy: rand(...p.energy),
+      danceability: rand(...p.dance),
+      valence: rand(...p.valence),
+      acousticness: rand(...p.acousticness),
+      speechiness: rand(0.03, 0.35),
+    });
+  }
+  return tracks;
+}
+
+function aggregateGenres(tracks) {
+  const map = {};
+  tracks.forEach(t => {
+    if (!map[t.genre]) map[t.genre] = { genre: t.genre, count: 0, popSum: 0 };
+    map[t.genre].count++;
+    map[t.genre].popSum += t.popularity;
+  });
+  return Object.values(map)
+    .map(g => ({ ...g, avgPop: g.popSum / g.count }))
+    .sort((a, b) => b.avgPop - a.avgPop);
+}
+
+// ── Chart instances ──────────────────────────────────────────────────────────
+let charts = {};
+
+function destroyAll() {
+  Object.values(charts).forEach(c => c && c.destroy());
+  charts = {};
+}
+
+const chartDefaults = {
+  color: '#c8c8d8',
+  borderColor: 'rgba(255,255,255,0.06)',
+  backgroundColor: 'rgba(0,0,0,0)',
+};
+
+Chart.defaults.color = chartDefaults.color;
+Chart.defaults.borderColor = chartDefaults.borderColor;
+Chart.defaults.backgroundColor = chartDefaults.backgroundColor;
+
+function hexAlpha(hex, a) {
+  const r = parseInt(hex.slice(1,3),16);
+  const g = parseInt(hex.slice(3,5),16);
+  const b = parseInt(hex.slice(5,7),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+// ── Render all ───────────────────────────────────────────────────────────────
+let currentFilter = 'All';
+let allTracks = [];
+
+function renderAll() {
+  allTracks = generateData(50);
+  const genreData = aggregateGenres(allTracks);
+
+  // Update KPIs
+  document.getElementById('kpi-tracks').textContent = allTracks.length;
+  document.getElementById('kpi-top-genre').textContent = genreData[0].genre;
+  document.getElementById('kpi-top-pop').textContent = `Avg popularity: ${genreData[0].avgPop.toFixed(1)}`;
+  document.getElementById('kpi-avg-pop').textContent = Math.round(allTracks.reduce((s,t)=>s+t.popularity,0)/allTracks.length);
+  document.getElementById('kpi-genres').textContent = genreData.length;
+
+  destroyAll();
+  renderBar(genreData);
+  renderPie(genreData);
+  renderTreemap(genreData);
+  renderHistogram(allTracks);
+  renderScatter(allTracks);
+  renderRadar(genreData, allTracks);
+  renderLine();
+  renderFilterBtns();
+  renderTracks();
+}
+
+// 1. Bar Chart
+function renderBar(genreData) {
+  const top = genreData.slice(0, 10);
+  const ctx = document.getElementById('barChart').getContext('2d');
+  charts.bar = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: top.map(g => g.genre),
+      datasets: [{
+        data: top.map(g => g.avgPop.toFixed(1)),
+        backgroundColor: top.map(g => hexAlpha(GENRE_COLORS[g.genre] || '#1DB954', 0.8)),
+        borderColor: top.map(g => GENRE_COLORS[g.genre] || '#1DB954'),
+        borderWidth: 1,
+        borderRadius: 6,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        label: ctx => ` Avg Popularity: ${ctx.raw}`
+      }}},
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, min: 0, max: 100, ticks: { color: '#8888aa' } }
+      }
+    }
+  });
+}
+
+// 2. Pie Chart
+function renderPie(genreData) {
+  const top = genreData.slice(0, 8);
+  const ctx = document.getElementById('pieChart').getContext('2d');
+  charts.pie = new Chart(ctx, {
+    type: 'doughnut',
+    data: {
+      labels: top.map(g => g.genre),
+      datasets: [{
+        data: top.map(g => g.count),
+        backgroundColor: top.map(g => hexAlpha(GENRE_COLORS[g.genre] || '#1DB954', 0.85)),
+        borderColor: '#0d0d1a',
+        borderWidth: 3,
+        hoverOffset: 8,
+      }]
+    },
+    options: {
+      responsive: true,
+      cutout: '58%',
+      plugins: {
+        legend: { position: 'right', labels: { color: '#8888aa', boxWidth: 12, padding: 16, font: { size: 12 } } },
+        tooltip: { callbacks: {
+          label: ctx => ` ${ctx.label}: ${ctx.raw} tracks (${Math.round(ctx.raw/allTracks.length*100)}%)`
+        }}
+      }
+    }
+  });
+}
+
+// 3. Treemap via D3
+function renderTreemap(genreData) {
+  const container = document.getElementById('treemap');
+  container.innerHTML = '';
+  const W = container.clientWidth || 800;
+  const H = 300;
+
+  const root = d3.hierarchy({ children: genreData.map(g => ({ name: g.genre, value: g.count, pop: g.avgPop })) })
+    .sum(d => d.value);
+
+  d3.treemap().size([W, H]).padding(3)(root);
+
+  const svg = d3.select('#treemap').append('svg')
+    .attr('width', W).attr('height', H).attr('viewBox', `0 0 ${W} ${H}`);
+
+  const cell = svg.selectAll('g').data(root.leaves()).enter().append('g')
+    .attr('transform', d => `translate(${d.x0},${d.y0})`)
+    .attr('class', 'treemap-cell');
+
+  cell.append('rect')
+    .attr('width', d => d.x1 - d.x0)
+    .attr('height', d => d.y1 - d.y0)
+    .attr('rx', 8)
+    .attr('fill', d => hexAlpha(GENRE_COLORS[d.data.name] || '#1DB954', 0.75))
+    .attr('stroke', '#0a0a0f')
+    .attr('stroke-width', 2);
+
+  cell.append('text')
+    .attr('class', 'treemap-label')
+    .attr('x', 10).attr('y', 22)
+    .attr('fill', '#fff')
+    .attr('font-size', d => (d.x1-d.x0) > 80 ? '13' : '10')
+    .attr('font-weight', '600')
+    .text(d => (d.x1-d.x0) > 50 ? d.data.name : '');
+
+  cell.append('text')
+    .attr('class', 'treemap-label')
+    .attr('x', 10).attr('y', 38)
+    .attr('fill', 'rgba(255,255,255,0.65)')
+    .attr('font-size', '11')
+    .text(d => (d.x1-d.x0) > 70 ? `${d.data.value} tracks` : '');
+}
+
+// 4. Histogram
+function renderHistogram(tracks) {
+  const tempos = tracks.map(t => t.tempo);
+  const bins = [];
+  for (let b = 60; b <= 160; b += 5) bins.push(b);
+  const counts = new Array(bins.length - 1).fill(0);
+  tempos.forEach(t => {
+    for (let i = 0; i < bins.length - 1; i++) {
+      if (t >= bins[i] && t < bins[i+1]) { counts[i]++; break; }
+    }
+  });
+
+  const ctx = document.getElementById('histChart').getContext('2d');
+  charts.hist = new Chart(ctx, {
+    type: 'bar',
+    data: {
+      labels: bins.slice(0,-1).map(b => `${b}`),
+      datasets: [{
+        data: counts,
+        backgroundColor: hexAlpha('#1DB954', 0.7),
+        borderColor: '#1DB954',
+        borderWidth: 1,
+        borderRadius: 4,
+        borderSkipped: false,
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false }, tooltip: { callbacks: {
+        title: ctx => `${ctx[0].label}–${parseInt(ctx[0].label)+5} BPM`,
+        label: ctx => ` ${ctx.raw} tracks`
+      }}},
+      scales: {
+        x: { grid: { display: false }, ticks: { color: '#8888aa', maxTicksLimit: 8 } },
+        y: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } }
+      }
+    }
+  });
+}
+
+// 5. Scatter
+function renderScatter(tracks) {
+  const byGenre = {};
+  tracks.forEach(t => {
+    if (!byGenre[t.genre]) byGenre[t.genre] = [];
+    byGenre[t.genre].push({ x: +t.energy.toFixed(3), y: +t.danceability.toFixed(3), label: t.name });
+  });
+
+  const datasets = Object.entries(byGenre).map(([g, pts]) => ({
+    label: g,
+    data: pts,
+    backgroundColor: hexAlpha(GENRE_COLORS[g] || '#1DB954', 0.7),
+    borderColor: GENRE_COLORS[g] || '#1DB954',
+    borderWidth: 1,
+    pointRadius: 5,
+    pointHoverRadius: 7,
+  }));
+
+  const ctx = document.getElementById('scatterChart').getContext('2d');
+  charts.scatter = new Chart(ctx, {
+    type: 'scatter',
+    data: { datasets },
+    options: {
+      responsive: true,
+      plugins: {
+        legend: { labels: { color: '#8888aa', font: { size: 10 }, boxWidth: 10, padding: 8 }, position: 'bottom' },
+        tooltip: { callbacks: {
+          label: ctx => ` Energy: ${ctx.raw.x}, Dance: ${ctx.raw.y}`
+        }}
+      },
+      scales: {
+        x: { title: { display: true, text: 'Energy', color: '#8888aa' }, min: 0, max: 1, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } },
+        y: { title: { display: true, text: 'Danceability', color: '#8888aa' }, min: 0, max: 1, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } }
+      }
+    }
+  });
+}
+
+// 6. Radar
+function renderRadar(genreData, tracks) {
+  const features = ['energy','danceability','valence','acousticness','speechiness'];
+  const featLabels = ['Energy','Danceability','Valence','Acousticness','Speechiness'];
+  const topGenres = genreData.slice(0, 5).map(g => g.genre);
+
+  const datasets = topGenres.map(genre => {
+    const gTracks = tracks.filter(t => t.genre === genre);
+    const vals = features.map(f => {
+      const avg = gTracks.reduce((s, t) => s + t[f], 0) / gTracks.length;
+      return +avg.toFixed(3);
+    });
+    const color = GENRE_COLORS[genre] || '#1DB954';
+    return {
+      label: genre,
+      data: vals,
+      borderColor: color,
+      backgroundColor: hexAlpha(color, 0.12),
+      borderWidth: 2,
+      pointBackgroundColor: color,
+      pointRadius: 4,
+    };
+  });
+
+  const ctx = document.getElementById('radarChart').getContext('2d');
+  charts.radar = new Chart(ctx, {
+    type: 'radar',
+    data: { labels: featLabels, datasets },
+    options: {
+      responsive: true,
+      plugins: { legend: { labels: { color: '#8888aa', font: { size: 11 }, padding: 16 } } },
+      scales: {
+        r: {
+          min: 0, max: 1,
+          grid: { color: 'rgba(255,255,255,0.08)' },
+          angleLines: { color: 'rgba(255,255,255,0.08)' },
+          pointLabels: { color: '#c8c8d8', font: { size: 12 } },
+          ticks: { display: false },
+        }
+      }
+    }
+  });
+}
+
+// 7. Line Chart
+function renderLine() {
+  const periods = ['Last 4 weeks', 'Last 6 months', 'All time'];
+  const topGenres = GENRES.slice(0, 7);
+  const genreShift = { 'Pop': [8,4,0], 'Hip-Hop': [6,3,0], 'K-Pop': [10,5,0], 'Rock': [0,3,7], 'Jazz': [0,2,5] };
+
+  const datasets = topGenres.map(genre => {
+    const base = rand(55, 80);
+    const shift = genreShift[genre] || [0,0,0];
+    const data = periods.map((_, i) => +(base + shift[i] + rand(-3, 3)).toFixed(1));
+    const color = GENRE_COLORS[genre] || '#1DB954';
+    return {
+      label: genre,
+      data,
+      borderColor: color,
+      backgroundColor: hexAlpha(color, 0.08),
+      borderWidth: 2.5,
+      pointBackgroundColor: color,
+      pointBorderColor: '#0a0a0f',
+      pointBorderWidth: 2,
+      pointRadius: 6,
+      tension: 0.35,
+      fill: false,
+    };
+  });
+
+  const ctx = document.getElementById('lineChart').getContext('2d');
+  charts.line = new Chart(ctx, {
+    type: 'line',
+    data: { labels: periods, datasets },
+    options: {
+      responsive: true,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { labels: { color: '#8888aa', font: { size: 11 }, boxWidth: 20, padding: 16 }, position: 'bottom' },
+        tooltip: { callbacks: { label: ctx => ` ${ctx.dataset.label}: ${ctx.raw}` } }
+      },
+      scales: {
+        x: { grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } },
+        y: { min: 40, max: 100, grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#8888aa' } }
+      }
+    }
+  });
+}
+
+// ── Genre filter buttons ───────────────────────────────────────────────────
+function renderFilterBtns() {
+  const bar = document.getElementById('genre-filters');
+  bar.innerHTML = '';
+  const genres = ['All', ...GENRES];
+  genres.forEach(g => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (g === currentFilter ? ' active' : '');
+    btn.textContent = g;
+    btn.onclick = () => {
+      currentFilter = g;
+      document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderTracks();
+    };
+    bar.appendChild(btn);
+  });
+}
+
+// ── Tracks list ───────────────────────────────────────────────────────────
+function renderTracks() {
+  const list = document.getElementById('tracks-list');
+  const filtered = currentFilter === 'All' ? allTracks : allTracks.filter(t => t.genre === currentFilter);
+  list.innerHTML = filtered.slice(0, 20).map(t => `
+    <div class="track-item">
+      <span class="track-rank">#${t.rank}</span>
+      <div class="track-art" style="background:${hexAlpha(GENRE_COLORS[t.genre]||'#1DB954',0.15)}">
+        ${GENRE_EMOJI[t.genre] || '🎵'}
+      </div>
+      <div class="track-info">
+        <div class="track-name">${t.name}</div>
+        <div class="track-artist">${t.artist} · <span style="color:${GENRE_COLORS[t.genre]||'#1DB954'}">${t.genre}</span></div>
+      </div>
+      <span class="track-pop">${t.popularity}</span>
+    </div>
+  `).join('');
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────
+function refreshData() {
+  currentFilter = 'All';
+  renderAll();
+}
+
+// ── Init ─────────────────────────────────────────────────────────────────
+renderAll();
+window.addEventListener('resize', () => {
+  renderTreemap(aggregateGenres(allTracks));
+});
+</script>
+</body>
+</html>
