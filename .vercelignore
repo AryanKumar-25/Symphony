@@ -1,0 +1,14 @@
+# Exclude Python/Streamlit files from Vercel so it does not auto-detect
+# the Python serverless runtime (app.py is a Streamlit app, while website.html
+# is the standalone static web version).
+app.py
+requirements.txt
+utils/
+.streamlit/
+.devcontainer/
+.env
+.env.example
+.cache
+music_trend_viz/
+__pycache__/
+*.pyc
